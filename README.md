@@ -28,3 +28,78 @@ The game ends when a team scores **5** out of the 9 possible sets.
 <br>
 ## Strategy
 WIP
+
+
+
+
+
+---
+
+## Branch Model
+
+```
+main       ← production
+staging    ← QA gate
+feature/*  ← all development work
+```
+
+---
+
+## Developer Workflow
+
+### 1. Create a feature branch (always from `main`)
+
+```bash
+git checkout main && git pull
+git checkout -b feature/your-feature
+```
+
+### 2. Do your work and push
+
+```bash
+# ... make commits as you go ...
+git push origin feature/your-feature
+```
+
+### 3. Open a PR into `staging`
+
+```bash
+gh pr create --base staging --title "Your feature title" --body ""
+```
+
+GitHub will populate the PR body with the PR template. Fill it out on GitHub — describe what changed, how you tested it, and any risks.
+
+### 4. Run the AI reviewer (before merging)
+
+In Claude Code, with your feature branch checked out:
+
+```
+/project:ai-reviewer
+```
+
+Claude diffs your branch against `staging`, flags any blocking or advisory issues with `file:line` references. Address blocking findings, then check the box in the PR description.
+
+### 5. Merge into `staging`
+
+```bash
+gh pr merge --squash
+```
+
+### 6. Verify on staging
+
+If the project has a staging environment, check your changes there. This is your QA window before production.
+
+### 7. Promote to production
+
+When `staging` is stable, open a PR from `staging` → `main`:
+
+```bash
+git checkout staging && git pull
+gh pr create --base main --title "Release: description of changes" --body "Promoting staging to production."
+```
+
+Then merge:
+
+```bash
+gh pr merge --squash
+```

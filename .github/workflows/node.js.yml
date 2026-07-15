@@ -2,18 +2,16 @@ name: Node.js CI
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "staging"]
   pull_request:
-    branches: ["main"]
+    branches: ["main", "staging"]
 
 jobs:
-  build:
+  client:
     runs-on: ubuntu-latest
-
     strategy:
       matrix:
         node-version: [18.x, 20.x, 22.x]
-
     steps:
       - uses: actions/checkout@v4
 
@@ -24,10 +22,6 @@ jobs:
           cache: "npm"
           cache-dependency-path: declaration-online/client/package-lock.json
 
-      - name: Check client directory contents
-        run: ls
-        working-directory: declaration-online/client
-
       - name: Install dependencies
         run: npm ci
         working-directory: declaration-online/client
@@ -35,3 +29,64 @@ jobs:
       - name: Build the client
         run: npm run build
         working-directory: declaration-online/client
+
+      - name: Test the client
+        run: npm test
+        working-directory: declaration-online/client
+
+  server:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x, 22.x]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "npm"
+          cache-dependency-path: declaration-online/server/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: declaration-online/server
+
+      - name: Type-check
+        run: npx tsc --noEmit
+        working-directory: declaration-online/server
+
+      - name: Test
+        run: npm test
+        working-directory: declaration-online/server
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: "npm"
+          cache-dependency-path: |
+            declaration-online/client/package-lock.json
+            declaration-online/server/package-lock.json
+
+      - name: Install client deps
+        run: npm ci
+        working-directory: declaration-online/client
+
+      - name: Lint client
+        run: npm run lint
+        working-directory: declaration-online/client
+
+      - name: Install server deps
+        run: npm ci
+        working-directory: declaration-online/server
+
+      - name: Lint server
+        run: npm run lint
+        working-directory: declaration-online/server

@@ -72,7 +72,7 @@ function SortableCardItem({
   const style = {
     transform: CSS.Transform.toString(transform), // Convert transform to CSS string
     transition, // Apply smooth transitions
-    marginLeft: index === 0 ? "0px" : decPile ? "-100px" : "-60px", // Overlap cards except first
+    marginLeft: index === 0 ? "0px" : decPile ? "-6.25rem" : "-3.75rem", // Overlap cards except first (rem so it scales with the card at every breakpoint)
     zIndex: isDragging ? 1000 : index, // Dragged cards appear on top
     opacity: isDragging ? 0 : 1, // Make original card invisible when dragging
   };

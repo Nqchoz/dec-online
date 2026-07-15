@@ -1,124 +1,87 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import CardGrid from "../Cards/MultiCard/CardGrid";
 import { sets, getSetStrFromCard } from '../Cards/Sets';
 
 import './Declare.css';
 import React from 'react';
-import { Card } from '../../Types/Card';
-import { formatTextObjectToString } from '../../Types/Utils';
 
 interface DeclareProps {
   deckType: string;
   selectedOverlayCard: string | null;
   setSelectedOverlayCard: (card: string | null) => void;
-  playerHand: Card[];
-  handleDeclareCheck: (cardsLeftPlayerCheck: string[], cardsRightPlayerCheck: string[], set: string[]) => void;
+  // Emits the server contract: which teammate seat each of the set's 6 cards
+  // is claimed to be held by.
+  onDeclare: (setId: string, assignments: Record<string, string>) => void;
   prevDeclarations: string[];
+  mySeatId: string;
+  leftTeammateId: string;
+  rightTeammateId: string;
 }
 
-export default function Declare({ deckType, selectedOverlayCard, setSelectedOverlayCard, playerHand, handleDeclareCheck, prevDeclarations }: DeclareProps) {
+export default function Declare({
+  deckType,
+  selectedOverlayCard,
+  setSelectedOverlayCard,
+  onDeclare,
+  prevDeclarations,
+  mySeatId,
+  leftTeammateId,
+  rightTeammateId,
+}: DeclareProps) {
   const [showGrid, setShowDeclareGrid] = useState(false);
   const [declareSetStr, setDeclareSetStr] = useState("SetOfSets");
   const [cardCycle, setCardCycle] = useState(false);
   const [colorIndices, setColorIndices] = React.useState<number[]>(Array(6).fill(0));
 
-  var declarationSuccess = true;
-  var toBeCheckedLeftTeammate: string[] = [];
-  var toBeCheckedRightTeammate: string[] = [];
-
-  // For testing 
-  // useEffect(() => {
-  //               console.log("declareSetStr updated:", declareSetStr);
-  //               console.log("cardCycle updated:", cardCycle);
-  //           }, [declareSetStr, cardCycle]);
-
   function updateColorIndex(idx: number) {
-    if (!cardCycle) return; // Only cycle colors if cardCycle is true
-
+    if (!cardCycle) return; // Only cycle colors once a set is chosen
     setColorIndices(prev =>
-      prev.map((val, i) => i === idx ? (val < 3 ? val + 1 : 0) : val)
+      prev.map((val, i) => (i === idx ? (val < 3 ? val + 1 : 0) : val))
     );
   }
 
-  function checkForOwnCard(cardToCheck: string): boolean {
-    return playerHand.some(
-      (card) => formatTextObjectToString(card) === cardToCheck
-    )
-  }
-
-  function handleClose() {
+  function reset() {
     setShowDeclareGrid(false);
     setDeclareSetStr("SetOfSets");
     setCardCycle(false);
     setSelectedOverlayCard(null);
-    setColorIndices(Array(6).fill(0)); // Reset color indices
+    setColorIndices(Array(6).fill(0));
   }
-  
+
+  // color: 1 = self, 2 = left teammate, 3 = right teammate
+  function seatForColor(color: number): string {
+    if (color === 1) return mySeatId;
+    if (color === 2) return leftTeammateId;
+    return rightTeammateId;
+  }
+
   function handleConfirm() {
+    // Phase 1: pick which set is being declared (from the SetOfSets picker).
     if (declareSetStr === "SetOfSets") {
-      // Logic to handle confirmation of the selected card
-      console.log("Card confirmed:", selectedOverlayCard);
-      // Reset the selected card after confirmation
-      
-      if (selectedOverlayCard && !prevDeclarations.includes(selectedOverlayCard)) {        
-          setDeclareSetStr(getSetStrFromCard(selectedOverlayCard));
-          setCardCycle(true);
-
-          console.log("Selected card set");
+      if (selectedOverlayCard && !prevDeclarations.includes(selectedOverlayCard)) {
+        setDeclareSetStr(getSetStrFromCard(selectedOverlayCard));
+        setCardCycle(true);
       } else {
-          alert("This set was already declared");
+        alert("This set was already declared");
       }
-      
       setSelectedOverlayCard(null);
-    } else {
-      if (colorIndices.includes(0)) {
-        alert("Please assign all cards a color before confirming.");
-        return;
-      }
-      for (let idx = 0; idx < colorIndices.length; idx++) {
-        const color = colorIndices[idx];
-        switch (color) {
-          case 1:
-            declarationSuccess = checkForOwnCard(sets.get(declareSetStr)?.[idx] ?? "");
-            break;
-          case 2: 
-            toBeCheckedLeftTeammate.push(sets.get(declareSetStr)?.[idx] ?? "");
-            break;
-          case 3: 
-            toBeCheckedRightTeammate.push(sets.get(declareSetStr)?.[idx] ?? "");
-            break;
-          default:
-            console.log("Error color index is valid:", color);
-            declarationSuccess = false;
-            break;
-        }
-
-        if (!declarationSuccess) {
-          alert(sets.get(declareSetStr)?.[idx] + " was not assigned correctly");
-          alert("Declaration failed");
-          break;
-        }
-      }
-
-      const set = sets.get(declareSetStr) || [];
-      if (declarationSuccess) {
-        // Send check for other players hands
-        handleDeclareCheck(toBeCheckedLeftTeammate, toBeCheckedRightTeammate, set);
-      } else {
-        handleDeclareCheck(set, set, set);
-      }
-
-      // TODO: Add logic to take cards from people's hands
-      // TODO: Add logic to make declaration piles
-      
-      setShowDeclareGrid(false);
-      setDeclareSetStr("SetOfSets");
-      setCardCycle(false);
-      setSelectedOverlayCard(null);
-      setColorIndices(Array(6).fill(0)); // Reset color indices
-      
-      // Declaration success handled in App.tsx
+      return;
     }
+
+    // Phase 2: every card must be assigned to a teammate (1/2/3).
+    if (colorIndices.includes(0)) {
+      alert("Please assign every card to a teammate before confirming.");
+      return;
+    }
+
+    const setCards = sets.get(declareSetStr) || [];
+    const assignments: Record<string, string> = {};
+    setCards.forEach((cardName, idx) => {
+      assignments[cardName] = seatForColor(colorIndices[idx]);
+    });
+
+    onDeclare(declareSetStr, assignments);
+    reset();
   }
 
   return (
@@ -132,8 +95,8 @@ export default function Declare({ deckType, selectedOverlayCard, setSelectedOver
 
         {showGrid && (
             <div className="overlay">
-                <CardGrid 
-                    Set={declareSetStr} 
+                <CardGrid
+                    Set={declareSetStr}
                     deckType={deckType}
                     selectedOverlayCard={selectedOverlayCard}
                     setSelectedOverlayCard={setSelectedOverlayCard}
@@ -144,33 +107,13 @@ export default function Declare({ deckType, selectedOverlayCard, setSelectedOver
 
                 {cardCycle ? (
                     <div>
-                      <button 
-                        className="close-button"
-                        onClick={handleClose}
-                        >
-                        Close
-                      </button>
-                      <button 
-                        className="confirm-button"
-                        onClick={handleConfirm}
-                        >
-                        Confirm
-                      </button>
+                      <button className="close-button" onClick={reset}>Close</button>
+                      <button className="confirm-button" onClick={handleConfirm}>Confirm</button>
                     </div>
                 ) : selectedOverlayCard ? (
-                    <button 
-                    className="ask-button"
-                    onClick={handleConfirm}
-                    >
-                    Confirm
-                    </button>
+                    <button className="ask-button" onClick={handleConfirm}>Confirm</button>
                 ) : (
-                  <button 
-                    className="close-button"
-                    onClick={handleClose}
-                    >
-                    Close
-                    </button>
+                    <button className="close-button" onClick={reset}>Close</button>
                 )}
             </div>
         )}

@@ -4,17 +4,21 @@ import type { Card } from "../Types/Card";
 export type Team = "blue" | "red";
 
 export interface RosterEntry {
+  memberId: string;
   seatId: string;
   username: string;
   team: Team;
   connected: boolean;
+  ready: boolean;
   count: number;
 }
 
 export interface ServerState {
   gameId: string;
   phase: "lobby" | "playing";
-  hostSeat: string;
+  hostId: string;
+  hostSeat: string | null;
+  paused: boolean;
   currentTurn: string | null;
   scores: { blue: number; red: number };
   gameOver: boolean;
@@ -32,16 +36,40 @@ export interface AskInfo {
 
 const WS_URL =
   ((import.meta as any).env?.VITE_WS_URL as string) || "ws://localhost:3001";
+const CREDS_KEY = "declaration.creds";
+
+interface Creds {
+  gameId: string;
+  memberId: string;
+  token: string;
+}
+function loadCreds(): Creds | null {
+  try {
+    const raw = localStorage.getItem(CREDS_KEY);
+    return raw ? (JSON.parse(raw) as Creds) : null;
+  } catch {
+    return null;
+  }
+}
+function saveCreds(c: Creds) {
+  localStorage.setItem(CREDS_KEY, JSON.stringify(c));
+}
+function clearCreds() {
+  localStorage.removeItem(CREDS_KEY);
+}
 
 /**
  * Owns the single WebSocket connection and turns the server's push messages
  * (joined / state / hand / askResult / declareResult / error) into React state.
- * The game is fully event-driven — there is no REST polling.
+ * Persists {gameId, memberId, token} so a dropped client auto-rejoins its seat.
  */
 export function useGameSocket() {
   const socketRef = useRef<WebSocket | null>(null);
+  const joinedRef = useRef(false); // have we successfully (re)joined this session?
+
   const [connected, setConnected] = useState(false);
-  const [seatId, setSeatId] = useState<string | null>(null);
+  const [reconnecting, setReconnecting] = useState<boolean>(() => !!loadCreds());
+  const [myMemberId, setMyMemberId] = useState<string | null>(null);
   const [gameId, setGameId] = useState<string | null>(null);
   const [state, setState] = useState<ServerState | null>(null);
   const [hand, setHand] = useState<Card[]>([]);
@@ -52,9 +80,17 @@ export function useGameSocket() {
   useEffect(() => {
     const ws = new WebSocket(WS_URL);
     socketRef.current = ws;
-    ws.onopen = () => setConnected(true);
+
+    ws.onopen = () => {
+      setConnected(true);
+      const creds = loadCreds();
+      if (creds) ws.send(JSON.stringify({ type: "rejoin", gameId: creds.gameId, token: creds.token }));
+    };
     ws.onclose = () => setConnected(false);
-    ws.onerror = () => setError("Connection error — is the server running?");
+    ws.onerror = () => {
+      setError("Connection error — is the server running?");
+      setReconnecting(false);
+    };
     ws.onmessage = (ev) => {
       let msg: any;
       try {
@@ -64,8 +100,11 @@ export function useGameSocket() {
       }
       switch (msg.type) {
         case "joined":
-          setSeatId(msg.seatId);
+          joinedRef.current = true;
+          setReconnecting(false);
+          setMyMemberId(msg.memberId);
           setGameId(msg.gameId);
+          saveCreds({ gameId: msg.gameId, memberId: msg.memberId, token: msg.token });
           break;
         case "state":
           setState(msg as ServerState);
@@ -74,21 +113,16 @@ export function useGameSocket() {
           setHand(msg.cards as Card[]);
           break;
         case "askResult":
-          setLastAsk({
-            from: msg.fromSeat,
-            to: msg.targetSeat,
-            card: msg.card,
-            result: msg.received,
-          });
+          setLastAsk({ from: msg.fromSeat, to: msg.targetSeat, card: msg.card, result: msg.received });
           break;
         case "declareResult":
-          setNotice(
-            msg.correctCheck
-              ? `✅ ${msg.message}`
-              : `❌ ${msg.message}`
-          );
+          setNotice(msg.correctCheck ? `✅ ${msg.message}` : `❌ ${msg.message}`);
           break;
         case "error":
+          // A failed auto-rejoin (stale creds) shouldn't strand us on a blank
+          // screen — drop the creds so the menu shows.
+          if (!joinedRef.current && loadCreds()) clearCreds();
+          setReconnecting(false);
           setError(msg.error || "Something went wrong.");
           break;
       }
@@ -102,21 +136,30 @@ export function useGameSocket() {
     else setError("Not connected to the server.");
   }, []);
 
+  const leave = useCallback(() => {
+    clearCreds();
+    window.location.reload();
+  }, []);
+
   const api = {
     createGame: (username: string) => send({ type: "createGame", username }),
-    joinGame: (code: string, username: string) =>
-      send({ type: "joinGame", gameId: code, username }),
+    joinGame: (code: string, username: string) => send({ type: "joinGame", gameId: code, username }),
+    setReady: (ready: boolean) => send({ type: "setReady", ready }),
+    arrange: (order: string[]) => send({ type: "arrange", order }),
+    shuffleTeams: () => send({ type: "shuffleTeams" }),
+    shuffleOrder: () => send({ type: "shuffleOrder" }),
     startGame: () => send({ type: "startGame" }),
-    ask: (card: string, targetSeatId: string) =>
-      send({ type: "ask", card, targetSeatId }),
+    ask: (card: string, targetSeatId: string) => send({ type: "ask", card, targetSeatId }),
     declareCheck: (setId: string, assignments: Record<string, string>) =>
       send({ type: "declareCheck", setId, assignments }),
     newGame: () => send({ type: "newGame" }),
+    endGame: () => send({ type: "endGame" }),
   };
 
   return {
     connected,
-    seatId,
+    reconnecting,
+    myMemberId,
     gameId,
     state,
     hand,
@@ -125,6 +168,7 @@ export function useGameSocket() {
     error,
     clearError: () => setError(null),
     clearNotice: () => setNotice(null),
+    leave,
     api,
   };
 }

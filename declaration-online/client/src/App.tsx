@@ -20,40 +20,65 @@ import "./Components/Cards/Card.css";
 import "./App.css";
 
 function App() {
-  const { connected, seatId, state, hand, lastAsk, notice, error, clearError, clearNotice, api } =
-    useGameSocket();
+  const {
+    connected,
+    reconnecting,
+    myMemberId,
+    state,
+    hand,
+    lastAsk,
+    notice,
+    error,
+    clearError,
+    clearNotice,
+    leave,
+    api,
+  } = useGameSocket();
 
   const [deckType, setDeckType] = useState("RegularCards");
   const toggleDeck = () =>
     setDeckType((d) => (d === "RegularCards" ? "HighContrastPlayingCards" : "RegularCards"));
-  const leaveGame = () => window.location.reload();
 
   // Card-select / ask overlay state
   const sets = useMemo(() => initSets(), []);
-  const [selectedCard, setSelectedCard] = useState<string | null>(null); // hand card -> opens its set
+  const [selectedCard, setSelectedCard] = useState<string | null>(null);
   const [selectedSet, setSelectedSet] = useState<string | null>(null);
-  const [selectedOverlayCard, setSelectedOverlayCard] = useState<string | null>(null); // the card being asked
+  const [selectedOverlayCard, setSelectedOverlayCard] = useState<string | null>(null);
   const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
 
   // Local (cosmetic) hand ordering, re-synced whenever the server pushes a new hand.
   const [localHand, setLocalHand] = useState<Card[]>([]);
   useEffect(() => setLocalHand(hand), [hand]);
 
+  const banner = (
+    <Banner error={error} notice={notice} onClearError={clearError} onClearNotice={clearNotice} />
+  );
+
   // ---- Menu / lobby gating ----
-  if (!seatId) {
+  if (reconnecting) return <Centered>Reconnecting…</Centered>;
+  if (!myMemberId) {
     return (
       <>
-        <Banner error={error} notice={notice} onClearError={clearError} onClearNotice={clearNotice} />
+        {banner}
         <MainMenu connected={connected} onCreate={api.createGame} onJoin={api.joinGame} />
       </>
     );
   }
-  if (!state) return <div>Loading…</div>;
+  if (!state) return <Centered>Loading…</Centered>;
   if (state.phase === "lobby") {
     return (
       <>
-        <Banner error={error} notice={notice} onClearError={clearError} onClearNotice={clearNotice} />
-        <Lobby state={state} mySeatId={seatId} onStart={api.startGame} onLeave={leaveGame} />
+        {banner}
+        <Lobby
+          state={state}
+          myMemberId={myMemberId}
+          onSetReady={api.setReady}
+          onArrange={api.arrange}
+          onShuffleTeams={api.shuffleTeams}
+          onShuffleOrder={api.shuffleOrder}
+          onStart={api.startGame}
+          onLeave={leave}
+        />
       </>
     );
   }
@@ -61,16 +86,18 @@ function App() {
   // ---- Game view (phase === "playing") ----
   const roster = state.roster;
   const byId: Record<string, RosterEntry> = Object.fromEntries(roster.map((r) => [r.seatId, r]));
+  const mySeatId = roster.find((r) => r.memberId === myMemberId)?.seatId ?? "";
   const seatIds = roster.map((r) => r.seatId);
-  const myIdx = seatIds.indexOf(seatId);
+  const myIdx = seatIds.indexOf(mySeatId);
   const rotated = myIdx >= 0 ? [...seatIds.slice(myIdx), ...seatIds.slice(0, myIdx)] : seatIds;
 
-  const myTeam = byId[seatId]?.team;
+  const myTeam = byId[mySeatId]?.team;
   const topPlayers = [rotated[4], rotated[3], rotated[2]];
   const sidePlayers = [rotated[1], rotated[5]];
   const leftTeammateId = rotated[2];
   const rightTeammateId = rotated[4];
-  const isMyTurn = state.currentTurn === seatId;
+  const amHost = state.hostId === myMemberId;
+  const isMyTurn = state.currentTurn === mySeatId && !state.paused;
 
   const nameOf = (sid: string) => byId[sid]?.username ?? sid;
   const teamOf = (sid: string) => byId[sid]?.team ?? "blue";
@@ -95,6 +122,10 @@ function App() {
   const handleAsk = () => {
     if (!selectedOverlayCard || !selectedTargetId) {
       alert("Select a player and a card first.");
+      return;
+    }
+    if (state.paused) {
+      alert("The game is paused — waiting for players to reconnect.");
       return;
     }
     if (!isMyTurn) {
@@ -126,10 +157,12 @@ function App() {
     />
   );
 
+  const disconnectedNames = roster.filter((r) => !r.connected).map((r) => r.username);
+
   return (
     <div className="App">
-      <Banner error={error} notice={notice} onClearError={clearError} onClearNotice={clearNotice} />
-      <Settings deckType={deckType} toggleDeck={toggleDeck} onLeave={leaveGame} />
+      {banner}
+      <Settings deckType={deckType} toggleDeck={toggleDeck} onLeave={leave} />
 
       <div className="table-layout">
         <div className="top-players">{topPlayers.map((sid) => renderSeat(sid, "top"))}</div>
@@ -149,7 +182,7 @@ function App() {
             prevDeclarations={state.declarations.blueDeclarations.concat(
               state.declarations.redDeclarations
             )}
-            mySeatId={seatId}
+            mySeatId={mySeatId}
             leftTeammateId={leftTeammateId}
             rightTeammateId={rightTeammateId}
           />
@@ -180,9 +213,9 @@ function App() {
             }}
           />
           <div className={`player-username ${myTeam} ${isMyTurn ? "active-turn" : ""}`}>
-            {nameOf(seatId)}
+            {nameOf(mySeatId)}
           </div>
-          {lastAsk?.from === seatId && (
+          {lastAsk?.from === mySeatId && (
             <div className="speech-bubble ask">{formatTextStringToSymbol(lastAsk.card)}</div>
           )}
         </div>
@@ -211,15 +244,33 @@ function App() {
         </div>
       )}
 
+      {state.paused && !state.gameOver && (
+        <div className="overlay" style={{ zIndex: 1800, flexDirection: "column", gap: "1rem" }}>
+          <div style={{ background: "rgba(0,0,0,0.8)", color: "white", padding: "2rem", borderRadius: "12px", textAlign: "center" }}>
+            <h2 style={{ marginTop: 0 }}>Game paused</h2>
+            <p>Waiting for {disconnectedNames.join(", ") || "a player"} to reconnect…</p>
+            {amHost && <button onClick={api.endGame}>End game &amp; return to lobby</button>}
+          </div>
+        </div>
+      )}
+
       {state.gameOver && state.winner && (
         <WinScreen
           winner={state.winner}
           scores={state.scores}
-          isHost={state.hostSeat === seatId}
+          isHost={amHost}
           onNewGame={api.newGame}
-          onLeave={leaveGame}
+          onLeave={leave}
         />
       )}
+    </div>
+  );
+}
+
+function Centered({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "white" }}>
+      {children}
     </div>
   );
 }

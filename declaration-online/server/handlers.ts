@@ -2,7 +2,8 @@
 //
 // WebSocket message handling, separated from server bootstrap so it can be
 // unit-tested with fake sockets (no port binding). index.ts wires these to the
-// real WebSocketServer; tests drive handleMessage directly.
+// real WebSocketServer; tests drive handleMessage directly. Identity/authz comes
+// from the socket<->member binding (registry.memberFor), never from the payload.
 
 import { WebSocket } from "ws";
 import { RoomRegistry, Room } from "./rooms";
@@ -10,10 +11,16 @@ import { RoomRegistry, Room } from "./rooms";
 export type WSMessage =
   | { type: "createGame"; username: string }
   | { type: "joinGame"; gameId: string; username: string }
+  | { type: "rejoin"; gameId: string; token: string }
+  | { type: "setReady"; ready: boolean }
+  | { type: "arrange"; order: string[] }
+  | { type: "shuffleTeams" }
+  | { type: "shuffleOrder" }
   | { type: "startGame" }
   | { type: "ask"; card: string; targetSeatId: string }
   | { type: "declareCheck"; setId: string; assignments: Record<string, string> }
-  | { type: "newGame" };
+  | { type: "newGame" }
+  | { type: "endGame" };
 
 export function sendTo(client: WebSocket, data: any): void {
   if (client.readyState === client.OPEN) client.send(JSON.stringify(data));
@@ -33,7 +40,9 @@ export function buildState(registry: RoomRegistry, room: Room) {
     type: "state" as const,
     gameId: room.id,
     phase: room.phase,
-    hostSeat: room.hostSeat,
+    hostId: room.hostId,
+    hostSeat: registry.hostSeat(room),
+    paused: registry.isPaused(room),
     currentTurn: gs.currentTurn,
     scores: gs.scores,
     gameOver: gs.gameOver,
@@ -63,15 +72,25 @@ export function handleMessage(
   socket: WebSocket,
   msg: WSMessage
 ): void {
+  const alreadyIn = () =>
+    sendTo(socket, { type: "error", error: "You are already in a game." });
+
   switch (msg.type) {
     case "createGame": {
+      if (registry.bindingFor(socket)) return alreadyIn();
       const { room, member } = registry.createRoom(msg.username, socket);
-      sendTo(socket, { type: "joined", gameId: room.id, seatId: member.seatId });
+      sendTo(socket, {
+        type: "joined",
+        gameId: room.id,
+        memberId: member.memberId,
+        token: member.token,
+      });
       pushRoomState(registry, room);
       return;
     }
 
     case "joinGame": {
+      if (registry.bindingFor(socket)) return alreadyIn();
       const gameId = (msg.gameId ?? "").trim().toUpperCase();
       const result = registry.joinRoom(gameId, msg.username, socket);
       if ("error" in result) {
@@ -81,36 +100,86 @@ export function handleMessage(
       sendTo(socket, {
         type: "joined",
         gameId: result.room.id,
-        seatId: result.member.seatId,
+        memberId: result.member.memberId,
+        token: result.member.token,
+      });
+      pushRoomState(registry, result.room);
+      return;
+    }
+
+    case "rejoin": {
+      if (registry.bindingFor(socket)) return alreadyIn();
+      const gameId = (msg.gameId ?? "").trim().toUpperCase();
+      const result = registry.rejoin(gameId, msg.token, socket);
+      if ("error" in result) {
+        sendTo(socket, { type: "error", error: result.error });
+        return;
+      }
+      sendTo(socket, {
+        type: "joined",
+        gameId: result.room.id,
+        memberId: result.member.memberId,
+        token: result.member.token,
       });
       pushRoomState(registry, result.room);
       return;
     }
   }
 
-  // Everything below requires an established seat binding.
-  const binding = registry.bindingFor(socket);
-  if (!binding) {
+  // Everything below requires an established member binding.
+  const member = registry.memberFor(socket);
+  if (!member) {
     sendTo(socket, { type: "error", error: "You are not in a game." });
     return;
   }
-  const room = registry.getRoom(binding.gameId);
+  const room = registry.getRoom(registry.bindingFor(socket)!.gameId);
   if (!room) {
     sendTo(socket, { type: "error", error: "That game no longer exists." });
     return;
   }
+  const isHost = registry.isHost(room, member.memberId);
+  const hostOnly = () =>
+    sendTo(socket, { type: "error", error: "Only the host can do that." });
 
   switch (msg.type) {
+    case "setReady": {
+      registry.setReady(room, member.memberId, !!msg.ready);
+      pushRoomState(registry, room);
+      return;
+    }
+
+    case "arrange": {
+      if (!isHost) return hostOnly();
+      if (!Array.isArray(msg.order)) {
+        sendTo(socket, { type: "error", error: "Invalid seat order." });
+        return;
+      }
+      const r = registry.arrange(room, msg.order);
+      if (r.error) return void sendTo(socket, { type: "error", error: r.error });
+      pushRoomState(registry, room);
+      return;
+    }
+
+    case "shuffleTeams": {
+      if (!isHost) return hostOnly();
+      const r = registry.shuffleTeams(room);
+      if (r.error) return void sendTo(socket, { type: "error", error: r.error });
+      pushRoomState(registry, room);
+      return;
+    }
+
+    case "shuffleOrder": {
+      if (!isHost) return hostOnly();
+      const r = registry.shuffleOrder(room);
+      if (r.error) return void sendTo(socket, { type: "error", error: r.error });
+      pushRoomState(registry, room);
+      return;
+    }
+
     case "startGame": {
-      if (!registry.isHost(room, binding.seatId)) {
-        sendTo(socket, { type: "error", error: "Only the host can start the game." });
-        return;
-      }
+      if (!isHost) return hostOnly();
       const r = registry.startGame(room);
-      if (r.error) {
-        sendTo(socket, { type: "error", error: r.error });
-        return;
-      }
+      if (r.error) return void sendTo(socket, { type: "error", error: r.error });
       pushRoomState(registry, room);
       return;
     }
@@ -120,14 +189,21 @@ export function handleMessage(
         sendTo(socket, { type: "error", error: "The game hasn't started yet." });
         return;
       }
-      const result = room.game.handleAsk(binding.seatId, msg.targetSeatId, msg.card);
+      if (registry.isPaused(room)) {
+        sendTo(socket, {
+          type: "error",
+          error: "Game is paused — waiting for players to reconnect.",
+        });
+        return;
+      }
+      const result = room.game.handleAsk(member.seatId, msg.targetSeatId, msg.card);
       if (!result.success) {
         sendTo(socket, { type: "error", error: result.error });
         return;
       }
       broadcastRoom(room, {
         type: "askResult",
-        fromSeat: binding.seatId,
+        fromSeat: member.seatId,
         targetSeat: msg.targetSeatId,
         card: msg.card,
         received: result.received,
@@ -141,8 +217,15 @@ export function handleMessage(
         sendTo(socket, { type: "error", error: "The game hasn't started yet." });
         return;
       }
+      if (registry.isPaused(room)) {
+        sendTo(socket, {
+          type: "error",
+          error: "Game is paused — waiting for players to reconnect.",
+        });
+        return;
+      }
       const check = room.game.handleDeclareCheck(
-        binding.seatId,
+        member.seatId,
         msg.setId,
         msg.assignments
       );
@@ -152,7 +235,7 @@ export function handleMessage(
       }
       broadcastRoom(room, {
         type: "declareResult",
-        bySeat: binding.seatId,
+        bySeat: member.seatId,
         correctCheck: check.correctCheck,
         winningTeam: check.winningTeam,
         setId: check.setId,
@@ -164,15 +247,20 @@ export function handleMessage(
     }
 
     case "newGame": {
-      if (!registry.isHost(room, binding.seatId)) {
-        sendTo(socket, { type: "error", error: "Only the host can start a new game." });
-        return;
-      }
+      if (!isHost) return hostOnly();
       if (!room.game) {
         sendTo(socket, { type: "error", error: "The game hasn't started yet." });
         return;
       }
       room.game.resetGame();
+      pushRoomState(registry, room);
+      return;
+    }
+
+    case "endGame": {
+      if (!isHost) return hostOnly();
+      const r = registry.endGame(room);
+      if (r.error) return void sendTo(socket, { type: "error", error: r.error });
       pushRoomState(registry, room);
       return;
     }

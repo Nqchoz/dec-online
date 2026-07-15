@@ -56,6 +56,18 @@ app.get("/api/declarations", (req, res) => {
   res.json({ declarations: game.getDeclarations() });
 });
 
+// REST endpoint: Get overall game state (turn, scores, game-over/winner)
+app.get("/api/state", (req, res) => {
+  res.json(game.getState());
+});
+
+// REST endpoint: Start a fresh game with the same players (e.g. a rematch).
+app.post("/api/reset", (req, res) => {
+  game.resetGame();
+  broadcast({ type: "game_reset", ...game.getState() });
+  res.json(game.getState());
+});
+
 
 // ------------------- WEBSOCKET SERVER -------------------
 
@@ -71,33 +83,59 @@ wss.on("connection", (socket) => {
   clients.add(socket);
 
   socket.on("message", (data) => {
-    const msg = JSON.parse(data.toString()) as WSMessage;
-    console.log("Reseived message:", msg);
+    let msg: WSMessage;
+    try {
+      msg = JSON.parse(data.toString()) as WSMessage;
+    } catch {
+      sendTo(socket, { type: "error", error: "Malformed message (invalid JSON)." });
+      return;
+    }
+    console.log("Received message:", msg);
 
     // ------------------- LISTENED MSG LOGIC -------------------
-    switch (msg.type) {
-      case "ask":
-        const result = game.handleAsk(msg.playerId, msg.targetPlayerId, msg.card);
-        if (result) {
-          broadcast({
+    try {
+      switch (msg.type) {
+        case "ask": {
+          const result = game.handleAsk(msg.playerId, msg.targetPlayerId, msg.card);
+          const payload = {
             type: "ask_result",
             playerId: msg.playerId,
             targetPlayerId: msg.targetPlayerId,
             card: msg.card,
             ...result,
-          });
+          };
+          // Illegal asks are reported only to the sender; processed asks
+          // (hit or miss) are broadcast so every client updates.
+          if (result.success) broadcast(payload);
+          else sendTo(socket, payload);
+          break;
         }
-        break;
 
-      case "declareCheck":
-        const check = game.handleDeclareCheck(msg.targetIds, msg.cardsLeftPlayerCheck, msg.cardsRightPlayerCheck, msg.set);
-        // console.log("Received declareCheck for players:", msg, "Result:", check.correctCheck);
-        broadcast({
-          type: "declareCheck_result",
-          check: check,
-        });
-        // console.log("Sending declareCheck_result");
-        break;
+        case "declareCheck": {
+          const check = game.handleDeclareCheck(
+            msg.playerId,
+            msg.setId,
+            msg.assignments
+          );
+          if (check.success) broadcast({ type: "declareCheck_result", check });
+          else sendTo(socket, { type: "declareCheck_result", check });
+          break;
+        }
+
+        case "newGame": {
+          game.resetGame();
+          broadcast({ type: "game_reset", ...game.getState() });
+          break;
+        }
+      }
+    } catch (err) {
+      // Engine methods are designed not to throw; this is a last-resort guard so
+      // one bad message can never take down the shared server.
+      console.error("Error handling message:", err);
+      sendTo(socket, {
+        type: "error",
+        error: "Internal error handling message.",
+      });
     }
   });
 
@@ -108,10 +146,21 @@ wss.on("connection", (socket) => {
 
 type WSMessage =
   | { type: "ask"; playerId: string; targetPlayerId: string; card: string }
-  | { type: "declareCheck"; targetIds: string[], cardsLeftPlayerCheck: string[]; cardsRightPlayerCheck: string[], set: string[] }
+  | {
+      type: "declareCheck";
+      playerId: string;
+      setId: string;
+      assignments: Record<string, string>;
+    }
+  | { type: "newGame" }
   | { type: "message"; text: string };
 
-// Broadcast to all connected clients
+// Send to a single client.
+function sendTo(client: WebSocket, data: any) {
+  if (client.readyState === client.OPEN) client.send(JSON.stringify(data));
+}
+
+// Broadcast to all connected clients.
 function broadcast(data: any) {
   const json = JSON.stringify(data);
   clients.forEach((client) => {

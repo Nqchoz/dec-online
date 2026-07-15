@@ -1,0 +1,12 @@
+# Code owners for Declaration Online.
+# These users are automatically requested for review on PRs touching matching paths.
+# Update the handles below if the team changes.
+
+# Default owner for everything
+*                       @Nqchoz
+
+# Client (React + Vite)
+/declaration-online/client/   @Nqchoz @londonwafflez @susheepx @jlyukim
+
+# Server (Express + WebSockets)
+/declaration-online/server/   @Nqchoz @londonwafflez @susheepx @jlyukim

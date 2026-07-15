@@ -1,49 +1,73 @@
 # Declaration Web Game Planning
 
+> This is the product spec plus a snapshot of where the build actually stands.
+> Status tags reflect the current code: **[done]**, **[partial]**, **[not started]**.
+> See `TODOS.md` for the granular task checklist.
+
 ## Minimum Viable Product
 
 ### Working Rules of Declaration
-- Implementing hands for each player (including dealing random cards)
-- Way to make valid asks (card in your set, opposing team)
-  - Show if the ask worked or not
-  - Display previous ask in the top right or something
-- Way to make declarations
-- Scoring declarations, ending games at 5 points
-- Turn indicator (highlight around player name)
-- Number of cards in each hand
-- Colors for teams
-- Figure out who starts (random/chosen)
-- Decide who goes when a player runs out of cards (leftmost player?)
+- **[done]** Hands for each player, dealing random cards (`gameManager.ts:dealCards`)
+- **[partial]** Making asks — the flow works end-to-end, but the server does **not** validate
+  legality (that you hold a card in the set, that the target is an opponent, or that it's your turn)
+  - **[done]** Show whether the ask worked (result speech bubble)
+  - **[partial]** Display the previous ask — bubbles show it on top/bottom seats; no persistent history panel
+- **[partial]** Making declarations — two-phase declare works and updates team counts, but the
+  server logic leans on client-supplied set strings + fragile seat math, and declared cards aren't
+  yet pulled into a pile
+- **[not started]** Scoring and ending the game at 5 points — teams only accumulate string arrays;
+  there is no numeric score and no game-over
+- **[not started]** Turn indicator — there is no turn concept anywhere (server or client)
+- **[done]** Number of cards in each hand (`OpponentHand`)
+- **[done]** Team colors
+- **[not started]** Deciding who starts (random/chosen)
+- **[not started]** Deciding who goes when a player runs out of cards (leftmost active player)
 
-### Lobbies
+### Lobbies — **[not started]** (largest remaining gap)
 - 6 users can join a lobby
-- Joining lobby via code/url?
+- Joining a lobby via code/url
 - Lobby owner can arrange the order of players/teams
 
+> Today there is **no lobby**: one global game is created when the server boots, over a hardcoded
+> 6-player roster, and each client picks its identity via a browser `prompt()` stored in
+> `localStorage`. Two browsers can both claim `player1`. Real multiplayer needs per-connection
+> identity, rooms, and a join flow before lobbies are meaningful.
+
 ### UI
-- Main menu
-- Game screen (just text/ascii?)
-- Usernames
-- Showing how many cards each player has
-- High contrast cards
+- **[not started]** Main menu
+- **[done]** Game screen — full 6-seat table with card sprites (not text/ascii)
+- **[partial]** Usernames — shown per seat, but entered via `prompt()`, not a real name flow
+- **[done]** Showing how many cards each player has
+- **[done]** High-contrast cards (deck theme toggle in Settings)
 
 ## Decisions
 
 ### How to Illustrate Asks?
-- Speech bubble showing the card that is being asked
-- Player being asked indicated by either their username in the bubble or an arrow?
+- **[done]** Speech bubble showing the card being asked
+- Player being asked is indicated by selecting their username box (gold highlight)
 
 ### How to Illustrate the Result?
-- Speech bubble for the ask-ee, with either an X for fail, and Y for success
+- **[done]** Speech bubble on the ask-ee showing success/fail
+- **[known issue]** Bubbles are styled only for top/bottom orientation; the two side seats are
+  mis-oriented/mis-placed and still need styling (latest commit's open item)
 
-## Potential Improvements
+## Known gaps & risks (from code review)
+- A bad declaration `throw`s in `handleDeclareCheck` and **crashes the shared server** (no try/catch
+  around the WS handler)
+- `removeSetFromAllHands` splices an array while iterating it
+- Client derives the declaring player by string-slicing a result message — brittle
+- Dead weight: unused `socket.io`/`socket.io-client` deps and an orphaned `server/index.js`; a stray
+  empty `declaration-online/package.json` scaffold
+- `GameManager` has no tests; CI builds only the client (server is never installed/tested/linted)
+
+## Potential Improvements (post-MVP)
 - Randomize teams
 - Tutorial match with a set script
 - "Training wheels mode" displaying previous asks
-- Match history -> export to text file
+- Match history → export to text file
 - CPU opponents
-  - Adjustable difficulties (give the cpu dementia i.e. move limit, only tracks sets it has)
-- Match review, evaluation of how you did
+  - Adjustable difficulties (e.g. move limit, only tracks sets it has seen)
+- Match review / self-evaluation
 - Elo system
 - Skill-based matchmaking
 - Tournament support

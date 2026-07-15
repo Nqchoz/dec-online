@@ -11,10 +11,14 @@ const panel: React.CSSProperties = {
   flexDirection: "column",
   gap: "0.75rem",
   padding: "2rem",
-  minWidth: "280px",
+  width: "min(22rem, 92vw)",
+  maxWidth: "92vw",
+  boxSizing: "border-box",
   background: "rgba(0,0,0,0.55)",
   borderRadius: "12px",
   color: "white",
+  // Fixed px so menu text stays readable regardless of the table's root-font scaling.
+  fontSize: "15px",
 };
 
 export default function MainMenu({ connected, onCreate, onJoin }: MainMenuProps) {
@@ -29,7 +33,7 @@ export default function MainMenu({ connected, onCreate, onJoin }: MainMenuProps)
       alignItems: "center", justifyContent: "center",
       flexDirection: "column", gap: "1.5rem",
     }}>
-      <h1 style={{ fontFamily: "Cinzel Decorative, serif", color: "white" }}>Declaration</h1>
+      <h1 style={{ fontFamily: "Cinzel Decorative, serif", color: "white", fontSize: "clamp(28px, 8vw, 56px)", margin: 0 }}>Declaration</h1>
 
       <div style={panel}>
         <label>

@@ -17,6 +17,7 @@ export default function WinScreen({ winner, scores, isHost, onNewGame, onLeave }
       <div style={{
         background: "rgba(0,0,0,0.75)", color: "white", padding: "2.5rem",
         borderRadius: "12px", textAlign: "center", display: "flex", flexDirection: "column", gap: "1rem",
+        maxWidth: "92vw", boxSizing: "border-box", fontSize: "15px",
       }}>
         <h1 style={{ margin: 0, color: winner === "blue" ? "#93E3E6" : "#F7B0B0" }}>
           {winner === "blue" ? "Blue" : "Red"} team wins!

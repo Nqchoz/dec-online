@@ -34,6 +34,21 @@ export interface AskInfo {
   result: boolean;
 }
 
+export interface LogEntry {
+  id: number;
+  kind: "ask" | "declare";
+  fromSeat?: string;
+  targetSeat?: string;
+  card?: string;
+  received?: boolean;
+  bySeat?: string;
+  setId?: string;
+  winningTeam?: Team;
+  correctCheck?: boolean;
+}
+
+const MAX_LOG = 100;
+
 const WS_URL =
   ((import.meta as any).env?.VITE_WS_URL as string) || "ws://localhost:3001";
 const CREDS_KEY = "declaration.creds";
@@ -66,6 +81,7 @@ function clearCreds() {
 export function useGameSocket() {
   const socketRef = useRef<WebSocket | null>(null);
   const joinedRef = useRef(false); // have we successfully (re)joined this session?
+  const logSeq = useRef(0);
 
   const [connected, setConnected] = useState(false);
   const [reconnecting, setReconnecting] = useState<boolean>(() => !!loadCreds());
@@ -74,24 +90,22 @@ export function useGameSocket() {
   const [state, setState] = useState<ServerState | null>(null);
   const [hand, setHand] = useState<Card[]>([]);
   const [lastAsk, setLastAsk] = useState<AskInfo | null>(null);
+  const [log, setLog] = useState<LogEntry[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const ws = new WebSocket(WS_URL);
-    socketRef.current = ws;
+  const appendLog = (entry: Omit<LogEntry, "id">) =>
+    setLog((prev) => {
+      const next = [...prev, { ...entry, id: ++logSeq.current }];
+      return next.length > MAX_LOG ? next.slice(next.length - MAX_LOG) : next;
+    });
 
-    ws.onopen = () => {
-      setConnected(true);
-      const creds = loadCreds();
-      if (creds) ws.send(JSON.stringify({ type: "rejoin", gameId: creds.gameId, token: creds.token }));
-    };
-    ws.onclose = () => setConnected(false);
-    ws.onerror = () => {
-      setError("Connection error — is the server running?");
-      setReconnecting(false);
-    };
-    ws.onmessage = (ev) => {
+  useEffect(() => {
+    let disposed = false; // set on teardown (incl. StrictMode remount) so an intentional close isn't treated as an error
+    let retries = 0;
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const handleMessage = (ev: MessageEvent) => {
       let msg: any;
       try {
         msg = JSON.parse(ev.data);
@@ -114,9 +128,23 @@ export function useGameSocket() {
           break;
         case "askResult":
           setLastAsk({ from: msg.fromSeat, to: msg.targetSeat, card: msg.card, result: msg.received });
+          appendLog({
+            kind: "ask",
+            fromSeat: msg.fromSeat,
+            targetSeat: msg.targetSeat,
+            card: msg.card,
+            received: msg.received,
+          });
           break;
         case "declareResult":
           setNotice(msg.correctCheck ? `✅ ${msg.message}` : `❌ ${msg.message}`);
+          appendLog({
+            kind: "declare",
+            bySeat: msg.bySeat,
+            setId: msg.setId,
+            winningTeam: msg.winningTeam,
+            correctCheck: msg.correctCheck,
+          });
           break;
         case "error":
           // A failed auto-rejoin (stale creds) shouldn't strand us on a blank
@@ -127,7 +155,43 @@ export function useGameSocket() {
           break;
       }
     };
-    return () => ws.close();
+
+    const connect = () => {
+      if (disposed) return;
+      const ws = new WebSocket(WS_URL);
+      socketRef.current = ws;
+
+      ws.onopen = () => {
+        retries = 0;
+        setConnected(true);
+        setError(null); // clear any prior "reconnecting" banner
+        const creds = loadCreds();
+        if (creds) ws.send(JSON.stringify({ type: "rejoin", gameId: creds.gameId, token: creds.token }));
+        else setReconnecting(false);
+      };
+      ws.onmessage = handleMessage;
+      // Errors surface via onclose (which drives the retry); a bare error event
+      // during connect/teardown shouldn't flash a scary banner.
+      ws.onerror = () => {};
+      ws.onclose = () => {
+        setConnected(false);
+        if (disposed) return; // intentional teardown — do not retry or warn
+        retries += 1;
+        if (retries >= 3) {
+          setReconnecting(false);
+          setError("Lost connection — reconnecting…");
+        }
+        reconnectTimer = setTimeout(connect, Math.min(500 * 2 ** retries, 5000));
+      };
+    };
+
+    connect();
+
+    return () => {
+      disposed = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      socketRef.current?.close();
+    };
   }, []);
 
   const send = useCallback((obj: any) => {
@@ -164,6 +228,7 @@ export function useGameSocket() {
     state,
     hand,
     lastAsk,
+    log,
     notice,
     error,
     clearError: () => setError(null),

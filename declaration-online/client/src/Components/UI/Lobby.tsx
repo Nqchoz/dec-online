@@ -132,10 +132,14 @@ export default function Lobby({
     color: "white",
     padding: "2rem",
     borderRadius: "12px",
-    minWidth: "360px",
+    width: "min(26rem, 94vw)",
+    maxWidth: "94vw",
+    boxSizing: "border-box",
     display: "flex",
     flexDirection: "column",
     gap: "1rem",
+    // Fixed px so lobby text stays readable regardless of the table's root-font scaling.
+    fontSize: "14px",
   };
 
   return (

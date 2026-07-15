@@ -63,19 +63,53 @@
   top: 40%;
 }
 
-/* Rotation for side players */
-.opponent-left {
-  transform: rotate(90deg);
-  transform-origin: bottom left;
-  margin-left: -3em;
-  margin-top: -25rem;
+/* Side seats: a compact upright column with only the card fan rotated to face
+   inward (no whole-seat rotation / negative-margin hacks). */
+.opponent-left,
+.opponent-right {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 12rem;
 }
 
-.opponent-right {
+/* The username label flows above the fan (top seats keep the absolute offset). */
+.opponent-left .username-box,
+.opponent-right .username-box {
+  position: static;
+  top: auto;
+  left: auto;
+}
+
+/* Reserve a box for the rotated fan; rotate the fan within it. */
+.opponent-left .card-hand-container,
+.opponent-right .card-hand-container {
+  min-height: 0;
+  width: 8rem;
+  height: 20rem;
+}
+.opponent-left .card-hand-container {
+  transform: rotate(90deg);
+}
+.opponent-right .card-hand-container {
   transform: rotate(-90deg);
-  transform-origin: bottom right;
-  margin-right: -3em;
-  margin-top: -25rem;
+}
+
+/* Card-count overlay reads inline for side seats rather than the huge top overlay. */
+.opponent-left .card-count-label,
+.opponent-right .card-count-label {
+  position: static;
+  font-size: 2.5rem;
+}
+
+/* Completed-set piles: stack each set's real cards, scaled to fit. */
+.dec-pile-sets {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  transform: scale(0.45);
+  transform-origin: top center;
 }
 
 /* fix to be displayed over the topmost card. lwky only style the size */
@@ -119,7 +153,7 @@
   
   background-color: black;
   color: #6A6A6A;
-  font-size: 37px;
+  font-size: 2.3rem;
   
   border-radius: .5rem;
   /* pointer-events: none; */
@@ -171,7 +205,7 @@
   
   background-color: #93E3E6;
   color: #6A6A6A;
-  font-size: 37px;
+  font-size: 2.3rem;
   
   border-radius: .5rem;
   pointer-events: none;
@@ -197,7 +231,7 @@
 
   height: 2rem;
 
-  font-size: 25px;
+  font-size: 1.55rem;
 
   border-radius: .5rem;
 }
@@ -216,4 +250,25 @@
   left: 5rem;
   width: 8rem;
   height: 2rem;
+}
+
+/* Side-seat bubbles: upright (no inherited 180° flip), stacked above the seat. */
+.speech-bubble.left,
+.speech-bubble.right {
+  transform: none;
+}
+.speech-bubble.ask.left,
+.speech-bubble.ask.right {
+  top: -2.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 11rem;
+  background-color: black;
+}
+.speech-bubble.response.left,
+.speech-bubble.response.right {
+  top: -5.25rem;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 6rem;
 }

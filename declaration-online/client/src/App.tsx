@@ -12,6 +12,7 @@ import DeclarationPile from "./Components/UI/DeclarationPile";
 import MainMenu from "./Components/UI/MainMenu";
 import Lobby from "./Components/UI/Lobby";
 import WinScreen from "./Components/UI/WinScreen";
+import GameLog from "./Components/UI/GameLog";
 import { useGameSocket, RosterEntry } from "./net/useGameSocket";
 
 import "./Components/UI/TableLayout.css";
@@ -27,6 +28,7 @@ function App() {
     state,
     hand,
     lastAsk,
+    log,
     notice,
     error,
     clearError,
@@ -163,6 +165,7 @@ function App() {
     <div className="App">
       {banner}
       <Settings deckType={deckType} toggleDeck={toggleDeck} onLeave={leave} />
+      <GameLog log={log} roster={roster} />
 
       <div className="table-layout">
         <div className="top-players">{topPlayers.map((sid) => renderSeat(sid, "top"))}</div>

@@ -1,5 +1,5 @@
 import CardHand from "./CardHand";
-import { formatTextObjectToString, formatTextStringToSymbol } from "../../../Types/Utils";
+import { formatTextStringToSymbol } from "../../../Types/Utils";
 
 interface OpponentHandProps {
   cardCount: number;
@@ -63,12 +63,12 @@ function OpponentHand({
       <CardHand Cards={cardBacks} deckType="RegularCards" faceUp={false}/>
       {cardCount > 3 && <div className="card-count-label">{cardCount}</div>}
       {askState && askState.from === playerId && (
-        <div className="speech-bubble ask">
+        <div className={`speech-bubble ask ${position}`}>
           {askState.to} {formatTextStringToSymbol(askState.card)}
         </div>
       )}
       {askState && askState.from === playerId && (
-        <div className="speech-bubble response">
+        <div className={`speech-bubble response ${position}`}>
           {askState.result ? "✅" : "❌"}
         </div>
       )}

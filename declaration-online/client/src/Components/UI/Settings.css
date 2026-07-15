@@ -26,7 +26,9 @@
   position: fixed;
   bottom: 65px;
   right: 80px;
+  max-width: 90vw;
   background: white;
+  color: #213547;
   border: 2px solid #888;
   border-radius: 12px;
   padding: 16px;

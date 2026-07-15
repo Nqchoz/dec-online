@@ -15,6 +15,17 @@
   cursor: pointer; /* Add a pointer on hover */
 }
 
+/* Keep the ask/declare card row within the viewport on narrow screens; it scrolls
+   horizontally rather than overflowing the page. The vertical padding reserves room
+   for the hover/selected card lift (translateY(-3rem)) — otherwise enabling overflow-x
+   forces overflow-y to compute as auto, which would clip the raised card. */
+.overlay .card-hand-container {
+  max-width: 100vw;
+  overflow-x: auto;
+  padding-top: 3.5rem;
+  padding-bottom: 1rem;
+}
+
 .close-button,
 .ask-button {
   margin-top: 1rem;

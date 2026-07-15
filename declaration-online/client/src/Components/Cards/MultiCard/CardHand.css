@@ -5,7 +5,7 @@
   align-items: center;
   justify-content: center;
   position: relative;
-  min-height: 200px; /* Ensure container has height for overlay positioning */
+  min-height: 12.5rem; /* Ensure container has height for overlay positioning (rem so it scales) */
 }
 
 .card-item {

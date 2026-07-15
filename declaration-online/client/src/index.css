@@ -7,6 +7,10 @@
   line-height: 1.5;
   font-weight: 700;
 
+  /* Base for the rem-based table. Reduced at the breakpoints below so the whole
+     board scales down proportionally on smaller screens (scale-to-fit). */
+  font-size: 16px;
+
   color-scheme: light dark;
   color: rgba(255, 255, 255, 0.87);
   background-color: #143339;
@@ -18,11 +22,13 @@
   -webkit-text-size-adjust: 100%;
 }
 
+html,
+body {
+  overflow-x: hidden; /* backstop against any fixed-element spill on small screens */
+}
+
 body {
   margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
   min-height: 100vh;
 }
 
@@ -65,4 +71,22 @@ button:focus-visible {
   button {
     background-color: #f9f9f9;
   }
+}
+
+/* Scale-to-fit: shrink the root font (and thus the whole rem-based table) as the
+   viewport narrows. Later (smaller) breakpoints win by source order. */
+@media (max-width: 1100px) {
+  :root { font-size: 13px; }
+}
+@media (max-width: 820px) {
+  :root { font-size: 11px; }
+}
+@media (max-width: 620px) {
+  :root { font-size: 9px; }
+}
+@media (max-width: 480px) {
+  :root { font-size: 7px; }
+}
+@media (max-width: 380px) {
+  :root { font-size: 6px; }
 }

@@ -8,35 +8,32 @@
 
 ### Working Rules of Declaration
 - **[done]** Hands for each player, dealing random cards (`gameManager.ts:dealCards`)
-- **[partial]** Making asks — the flow works end-to-end, but the server does **not** validate
-  legality (that you hold a card in the set, that the target is an opponent, or that it's your turn)
+- **[done]** Making asks — server-authoritative and fully validated (must hold a card in the set,
+  target must be an opponent, must be your turn); illegal asks are rejected and surfaced as errors
   - **[done]** Show whether the ask worked (result speech bubble)
-  - **[partial]** Display the previous ask — bubbles show it on top/bottom seats; no persistent history panel
-- **[partial]** Making declarations — two-phase declare works and updates team counts, but the
-  server logic leans on client-supplied set strings + fragile seat math, and declared cards aren't
-  yet pulled into a pile
-- **[not started]** Scoring and ending the game at 5 points — teams only accumulate string arrays;
-  there is no numeric score and no game-over
-- **[not started]** Turn indicator — there is no turn concept anywhere (server or client)
-- **[done]** Number of cards in each hand (`OpponentHand`)
+  - **[partial]** Display the previous ask — bubbles show it; no persistent history panel yet
+- **[done]** Making declarations — server verifies each card against real hands via the
+  `{ setId, assignments }` contract; cards are removed from play and the pile/score update
+- **[done]** Scoring and ending the game at 5 points — real scores, `gameOver`/`winner`, win screen
+- **[done]** Turn indicator — server tracks `currentTurn`; client highlights the active seat
+- **[done]** Number of cards in each hand (`OpponentHand`, roster-driven)
 - **[done]** Team colors
-- **[not started]** Deciding who starts (random/chosen)
-- **[not started]** Deciding who goes when a player runs out of cards (leftmost active player)
+- **[done]** Deciding who starts (host/seat1 begins)
+- **[done]** Deciding who goes when a player runs out of cards (hand off to nearest active teammate)
 
-### Lobbies — **[not started]** (largest remaining gap)
-- 6 users can join a lobby
-- Joining a lobby via code/url
-- Lobby owner can arrange the order of players/teams
+### Lobbies — **[done]** (MVP)
+- **[done]** 6 users join a lobby via a room code
+- **[done]** Username entry; server assigns seats + teams (alternating by seat)
+- **[not started]** Lobby owner arranging the order of players/teams + ready toggles (full-lobby upgrade)
 
-> Today there is **no lobby**: one global game is created when the server boots, over a hardcoded
-> 6-player roster, and each client picks its identity via a browser `prompt()` stored in
-> `localStorage`. Two browsers can both claim `player1`. Real multiplayer needs per-connection
-> identity, rooms, and a join flow before lobbies are meaningful.
+> Real multiplayer is in place: a room registry (`server/rooms.ts`) keyed by code, per-connection
+> identity (socket bound to `{gameId, seatId}`, spoofed seats rejected), WS-push state, and
+> disconnect/empty-room cleanup. Reconnection-resume of a dropped player is still out of scope.
 
 ### UI
-- **[not started]** Main menu
+- **[done]** Main menu — create / join by code / enter username
 - **[done]** Game screen — full 6-seat table with card sprites (not text/ascii)
-- **[partial]** Usernames — shown per seat, but entered via `prompt()`, not a real name flow
+- **[done]** Usernames — entered in the menu, shown per seat
 - **[done]** Showing how many cards each player has
 - **[done]** High-contrast cards (deck theme toggle in Settings)
 
@@ -51,14 +48,13 @@
 - **[known issue]** Bubbles are styled only for top/bottom orientation; the two side seats are
   mis-oriented/mis-placed and still need styling (latest commit's open item)
 
-## Known gaps & risks (from code review)
-- A bad declaration `throw`s in `handleDeclareCheck` and **crashes the shared server** (no try/catch
-  around the WS handler)
-- `removeSetFromAllHands` splices an array while iterating it
-- Client derives the declaring player by string-slicing a result message — brittle
-- Dead weight: unused `socket.io`/`socket.io-client` deps and an orphaned `server/index.js`; a stray
-  empty `declaration-online/package.json` scaffold
-- `GameManager` has no tests; CI builds only the client (server is never installed/tested/linted)
+## Known gaps & remaining work
+- Side-seat styling: ask/result speech bubbles are authored for top/bottom orientation only
+- No reconnection-resume for a dropped player mid-game; no game log / ask-history panel
+- Full-lobby upgrade (host arranges seats/teams, ready toggles) not built
+- No client-side test tooling; no ESLint/lint step in CI
+- `server/node_modules` is still committed to git (pre-existing hygiene; now gitignored going forward)
+- Not yet deployed (server TLS/`wss://`, hosting) — client already reads `VITE_WS_URL`
 
 ## Potential Improvements (post-MVP)
 - Randomize teams

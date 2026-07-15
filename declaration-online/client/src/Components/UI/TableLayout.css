@@ -137,6 +137,15 @@
   box-shadow: 0 0 20px 8px gold;
 }
 
+/* Whose turn it is — a green glow, distinct from the gold ask-target glow. */
+.username-box.active-turn {
+  box-shadow: 0 0 20px 8px #2ecc71;
+}
+
+.player-username.active-turn {
+  box-shadow: 0 0 20px 8px #2ecc71;
+}
+
 
 .username-box.top {
   transform: rotate(180deg);

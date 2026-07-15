@@ -5,7 +5,9 @@ interface OpponentHandProps {
   cardCount: number;
   position: "top" | "left" | "right";
   teamColor: string; // "red" | "blue"
-  playerId: string; // this opponent's ID
+  playerId: string; // this opponent's seat id
+  displayName?: string; // username to show (defaults to playerId)
+  isCurrentTurn?: boolean; // highlight when it's this seat's turn
   selectedTargetId: string | null;
   setSelectedTargetId: (id: string | null) => void;
   isOpponent: boolean;
@@ -22,6 +24,8 @@ function OpponentHand({
   position,
   teamColor,
   playerId,
+  displayName,
+  isCurrentTurn,
   selectedTargetId,
   setSelectedTargetId,
   isOpponent,
@@ -48,36 +52,25 @@ function OpponentHand({
   return (
     <div className={`opponent-hand opponent-${position}`}>
       
-      <div 
-        className={`username-box ${teamColor} ${position} ${isSelected ? "selected" : ""}`}
+      <div
+        className={`username-box ${teamColor} ${position} ${isSelected ? "selected" : ""} ${isCurrentTurn ? "active-turn" : ""}`}
         onClick={handleUsernameClick}
         style={{ cursor: isOpponent ? "pointer" : "default"}}
       >
-        <p className="username">{playerId}</p>
+        <p className="username">{displayName ?? playerId}</p>
       </div>
       
       <CardHand Cards={cardBacks} deckType="RegularCards" faceUp={false}/>
       {cardCount > 3 && <div className="card-count-label">{cardCount}</div>}
       {askState && askState.from === playerId && (
-      // {/* {askState &&( */}
-        <>
-          <div className="speech-bubble ask">
-            {askState.to} {formatTextStringToSymbol(askState.card)}
-          </div>
-          {/* {console.log("askState in OpponentHand:", askState)} */}
-        </>
-        
+        <div className="speech-bubble ask">
+          {askState.to} {formatTextStringToSymbol(askState.card)}
+        </div>
       )}
       {askState && askState.from === playerId && (
-        // {/* {askState && askState.result && ( */}
-        <>
-          {/* {console.log("Rendering response bubble for", playerId, "with result:", askState.result)} */}
-          <div className="speech-bubble response">
-            {askState.result ? "✅" : "❌"}
-            <div style={{ background: "red", zIndex: 9999 }}>
-            </div>
-          </div>
-        </> 
+        <div className="speech-bubble response">
+          {askState.result ? "✅" : "❌"}
+        </div>
       )}
     </div>
   );

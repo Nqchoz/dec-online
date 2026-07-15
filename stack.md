@@ -12,7 +12,7 @@ This project uses the following technologies:
 ### Backend
 - **Node.js + TypeScript** – Server runtime (run via `nodemon` + `ts-node`)
 - **Express** – HTTP/REST endpoints (port 3001)
-- **WebSockets** (`ws`, with `socket.io` available) – Real-time communication between clients
+- **WebSockets** (`ws`) – Real-time multiplayer: rooms, per-connection identity, state push
 - **cors** – Cross-origin access for the client
 - **Jest** – Server-side testing
 

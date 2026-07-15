@@ -6,23 +6,17 @@
 > version's checkboxes were stale — deck, asks, declarations, the WebSocket server,
 > and the React table UI are all already built.
 
-## ⚠️ Unreleased breaking change — ship server + client together
+## Tier 2 — real multiplayer (server + client shipped together)
 
-The server engine is now **authoritative and strictly enforcing**, and the `declareCheck`
-wire contract changed to `{ playerId, setId, assignments }` (was `{ targetIds,
-cardsLeftPlayerCheck, cardsRightPlayerCheck, set }`). **The deployed client is broken
-against this server** until the migration below lands: out-of-turn asks are rejected, the
-declare flow still sends the old shape, and team attribution parses a result message that
-no longer contains the expected comma.
-
-**Do not promote the server to `staging`/`main` on its own** — release the server engine and
-the client migration in the same PR (or gate one behind the other). Note this in the PR body
-as a known temporary breakage.
-
-Client migration (required to un-break the app — `client/src/App.tsx`, `Declare.tsx`):
-- [ ] Respect `currentTurn` from broadcasts — disable Ask when it isn't your turn
-- [ ] Send the new `declareCheck` shape (`playerId`, `setId`, `assignments`); the declarer id is now required
-- [ ] Read `winningTeam` / `gameOver` / `winner` from results instead of parsing the result message; add a win/end screen
+The Tier 1 engine break has been resolved: the client was migrated to the new realtime
+protocol (room-based, server-owned identity, WS-push state). Server and client are now in
+sync — no standalone-promotion hazard. What landed:
+- [x] Room registry + join-by-code lobby; server assigns seats/teams (`server/rooms.ts`)
+- [x] Per-connection identity (socket bound to `{gameId, seatId}`; spoofed seats rejected)
+- [x] WS-push state (public `state` + private `hand`); REST polling removed
+- [x] Client respects `currentTurn` (Ask gated + turn indicator)
+- [x] Client sends `{ playerId/seat, setId, assignments }` for declarations (incl. self cards)
+- [x] Client reads `winningTeam`/`gameOver`/`winner` directly; win screen added
 
 ## Phase 0: Setup & Planning
 
@@ -62,37 +56,39 @@ Goal: Visualize cards and game state. **Largely complete.**
 
 ## Phase 3: Multiplayer & Lobby System
 
-Goal: Real-time multiplayer with real per-client identity. **Not started — the largest remaining area.**
+Goal: Real-time multiplayer with real per-client identity. **MVP done.**
 
 - [x] WebSocket server (`ws`) — `index.ts`
-- [x] Broadcast asks and results to all clients — `broadcast()`
-- [ ] **Per-connection identity** — sockets are anonymous and clients self-assert `playerId`; two browsers can both be `player1`
-- [ ] Lobby system
-  - [ ] Generate lobby code
-  - [ ] Join via code
-  - [ ] Assign unique IDs / names (currently a browser `prompt()` + `localStorage`)
-  - [ ] Track readiness and team assignment (owner-arranged)
-- [ ] Support more than one concurrent game (one global game is created at server boot)
-- [ ] Handle disconnection and room cleanup (on close, socket is only removed from a set)
-- [ ] Start game only when 6 players are ready
+- [x] Broadcast state/results, scoped per room
+- [x] **Per-connection identity** — socket bound to `{gameId, seatId}`; spoofed seats rejected
+- [x] Lobby system (MVP)
+  - [x] Generate lobby code
+  - [x] Join via code
+  - [x] Assign seats/usernames (username entry replaces the `prompt()`)
+  - [~] Team assignment — auto-assigned by seat parity; owner-arranged order/teams still TODO
+  - [ ] Ready toggles (full-lobby upgrade)
+- [x] Support more than one concurrent game (room registry)
+- [x] Handle disconnection and room cleanup (empty lobbies deleted)
+- [x] Start game only when 6 players are present (host-initiated)
+- [ ] Reconnection-resume of a dropped player (out of scope for MVP)
 
 ## Phase 4: UI & Game Interaction Polish
 
 Goal: Complete the interactive game screen.
 
-- [ ] Main menu (create lobby / join lobby / enter name)
+- [x] Main menu (create / join by code / enter username)
 - [~] In-game screen
-  - [x] Display all 6 players
-  - [ ] Highlight current player (no turn indicator exists)
+  - [x] Display all 6 players (roster-driven)
+  - [x] Highlight current player (green turn indicator)
   - [x] Team color indicators
   - [x] Number of cards per player
-  - [x] Ask controls (card → set overlay → click target)
+  - [x] Ask controls (card → set overlay → click target; gated on your turn)
   - [x] Declare controls (two-phase set/teammate assignment)
-  - [~] Feedback area — ask/result speech bubbles work for top/bottom seats; **side seats mis-oriented/mis-placed**
+  - [~] Feedback area — ask/result speech bubbles + declare notice; **side seats still mis-oriented**
   - [ ] Game log / ask-history area
-- [ ] Win / end-of-game screen
-- [ ] Finish declare flow: take declared cards from hands + build the visual declaration pile from real cards (`Declare.tsx:111-112`)
-- [ ] Side-player styling (rotation + speech-bubble variants) — latest commit's open item
+- [x] Win / end-of-game screen (host can start a new game)
+- [~] Declare flow: cards are removed from hands server-side and piles show the set; a richer pile-from-real-cards animation is still open
+- [ ] Side-player styling (rotation + speech-bubble variants)
 
 ## Robustness & Cleanup (newly identified)
 
@@ -101,22 +97,23 @@ Goal: Complete the interactive game screen.
 - [x] Guard engine handlers against malformed input so they never throw (non-string card, non-object assignments)
 - [x] Prevent an already-declared set from being re-declared and re-scored (`claimedSets`)
 - [x] Fix the server `"Reseived message:"` log typo
-- [ ] Replace brittle client parse of the declarer from a result message string
-- [ ] Remove client debug artifacts: red placeholder `<div>` in `OpponentHand`, stray `console.log`s, commented-out test code
-- [ ] De-hardcode `localhost:3001` and duplicated seat/team arrays on the client
-- [ ] Remove dead dependencies: `socket.io` / `socket.io-client` (real stack is native `ws`) and orphaned `server/index.js`
-- [ ] Resolve the stray scaffold `declaration-online/package.json` (empty Vite/Vitest project, no `src/`)
+- [x] Replace brittle client parse of the declarer — client reads `winningTeam`/`setCard` directly
+- [x] Remove client debug artifacts in `OpponentHand` (red placeholder div, commented test code)
+- [x] De-hardcode `localhost:3001` — client reads `VITE_WS_URL` (`.env.example` added); seats/teams now roster-driven
+- [x] Remove dead dependencies (`socket.io` / `socket.io-client`) and orphaned `server/index.js`
+- [x] Delete the stray scaffold `declaration-online/package.json` (empty Vite/Vitest project)
 
 ## Testing & Deployment
 
 - [x] Deck unit tests — `deck.test.ts`, 6 jest tests pass (one shuffle test self-noted flaky)
 - [x] **Tests for `GameManager`** — engine covered (`gameManager.test.ts`): dealing, teams, ask success/miss, all ask rejections, teammate handoff + opponent fallback, declaration success/failure/validation, re-declare guard, malformed input, win-at-5
-- [ ] Client test tooling + tests (Vitest referenced but not installed/used in `client/`)
-- [ ] CI: install/type-check/test the **server** (CI currently builds the client only)
-- [ ] CI: add a test run and a lint step
+- [x] Tests for `rooms.ts` — `rooms.test.ts` (seat/team assignment, join rejections, host+6 start, identity binding, disconnect cleanup)
+- [ ] Client test tooling + tests (no Vitest wired in `client/`)
+- [x] CI: install + type-check + test the **server** (separate `server` job in `node.js.yml`)
+- [ ] CI: add a lint step (no ESLint configured yet)
 - [ ] Local multi-player test script / documented multi-tab manual test
 - [ ] Deployment pipeline (Heroku/Vercel/Fly.io/etc.)
-- [ ] HTTPS + secure WebSocket (`wss`)
+- [~] HTTPS + secure WebSocket — client supports `wss://` via `VITE_WS_URL`; server TLS/deploy still TODO
 - [ ] Basic monitoring/logs
 
 ## Phase 5: Extras & Enhancements (Post-MVP)

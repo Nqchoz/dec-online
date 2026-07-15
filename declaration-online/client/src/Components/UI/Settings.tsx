@@ -7,9 +7,10 @@ import './Settings.css';
 interface SettingsProps {
   deckType: string;
   toggleDeck: () => void;
+  onLeave: () => void;
 }
 
-export default function Settings({ deckType, toggleDeck }: SettingsProps) {
+export default function Settings({ deckType, toggleDeck, onLeave }: SettingsProps) {
   const [showSettings, setShowSettings] = useState(false);
 
   return (
@@ -28,11 +29,8 @@ export default function Settings({ deckType, toggleDeck }: SettingsProps) {
             Toggle Deck (Current: {deckType})
           </button>
 
-          <button onClick={() => {
-            localStorage.removeItem("playerId");
-            window.location.reload();
-          }}>
-            Switch Player
+          <button onClick={onLeave}>
+            Leave game
           </button>
         </div>
       )}
